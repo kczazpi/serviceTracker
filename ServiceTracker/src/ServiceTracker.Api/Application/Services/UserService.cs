@@ -27,8 +27,8 @@ public class UserService(
             {
                 Name = newUser.Name,
                 Surname = newUser.Surname,
-                Email = newUser.Email ?? ldapUser.Email,
-                IsActive = ldapUser.IsEnabled,
+                Email = newUser.Email ?? newUser.Email,
+                IsActive = newUser.IsEnabled,
                 CreatedAt = DateTimeOffset.UtcNow,
                 UpdatedAt = DateTimeOffset.UtcNow,
             };
@@ -55,7 +55,7 @@ public class UserService(
         }
         catch (Exception ex)
         {
-            _log.LogError(ex, $"Registration failed for Email: {ldapUser.Email}");
+            _log.LogError(ex, $"Registration failed for Email: {newUser.Email}");
             throw;
         }
     }
