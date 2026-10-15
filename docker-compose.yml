@@ -5,15 +5,30 @@ services:
     ports:
       - "4001:4001"
     depends_on:
-      - db_servicetracker
+      db_servicetracker:
+        condition: service_healthy
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
+      # The aspnet image listens on 8080 by default; match the published port.
+      - ASPNETCORE_HTTP_PORTS=4001
+      # appsettings.Development.json points at host "postgres"; inside compose the host is the service name.
+      - ConnectionStrings__Db=Host=db_servicetracker;Port=5432;Database=db1;Username=postgres;Password=postgres
 
   db_servicetracker:
     image: postgres:18-alpine
     container_name: postgres-tracker
+    environment:
+      POSTGRES_DB: db1
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      # Postgres 18+ keeps its data in a versioned folder below /var/lib/postgresql.
+      - tracker_pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d db1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
-
-
-
-
+volumes:
+  tracker_pgdata:
