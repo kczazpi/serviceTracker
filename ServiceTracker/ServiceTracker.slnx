@@ -1,2 +1,6 @@
 <Solution>
+  <Folder Name="/src/">
+    <Project Path="src/ServiceTracker.Api/ServiceTracker.Api.csproj" />
+    <Project Path="src/ServiceTracker.Contracts/ServiceTracker.Contracts.csproj" />
+  </Folder>
 </Solution>

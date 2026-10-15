@@ -1,53 +1,50 @@
-using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
 using Microsoft.Extensions.Options;
+using Microsoft.IdentityModel.JsonWebTokens;
 using Microsoft.IdentityModel.Tokens;
-using WorktimeSystem.Api.Core.Domain;
-using WorktimeSystem.Contracts;
+using ServiceTracker.Contracts;
 
-namespace WorktimeSystem.Api.Application.Services;
+namespace ServiceTracker.Api.Application.Services;
 
-public class JwtService(IOptions<JwtOptions> options) : IJwtService
+public class JwtService : IJwtService
 {
-    private readonly JwtOptions _opt = Validate(options.Value);
-    public async Task<string> GenerateToken(ApplicationUser user, IReadOnlyList<string> roles)
-    {
-        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_opt.SigningKey!));
-        var credentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
-        var claims = new List<Claim>
-        {
-            new (JwtRegisteredClaimNames.Sub, user.Id.ToString()),
-            new (JwtRegisteredClaimNames.Name, user.Name+user.Surname),
-            new (JwtRegisteredClaimNames.Email, user.Email ?? string.Empty),
-            new (JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
-        };
-        var token = new JwtSecurityToken(
-            issuer: _opt.Issuer,
-            audience: _opt.Audience,
-            claims: claims,
-            expires: DateTime.UtcNow.AddHours(_opt.LifetimeHours),
-            notBefore: DateTime.UtcNow,
-            signingCredentials: credentials
-        );
+    public const string RoleClaimType = "role";
 
-        return new JwtSecurityTokenHandler().WriteToken(token);
+    private readonly JwtOptions _opt;
+    private readonly SigningCredentials _credentials;
+    private readonly JsonWebTokenHandler _handler = new();
+
+    public JwtService(IOptions<JwtOptions> options)
+    {
+        _opt = options.Value;
+        _credentials = new SigningCredentials(
+            new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_opt.SigningKey)),
+            SecurityAlgorithms.HmacSha256);
     }
 
-    private static JwtOptions Validate(JwtOptions options)
+    public string GenerateToken(UserDto user, IReadOnlyList<string> roles)
     {
-        ArgumentNullException.ThrowIfNull(options);
-        ArgumentException.ThrowIfNullOrWhiteSpace(options.SigningKey, "Siging key missing.");
-        ArgumentException.ThrowIfNullOrWhiteSpace(options.Issuer, "Issuer is missing.");
-        ArgumentException.ThrowIfNullOrWhiteSpace(options.Audience, "Audience is missing.");
-        if (options.LifetimeHours <= 0)
+        var now = DateTime.UtcNow;
+        var claims = new List<Claim>
         {
-            throw new ArgumentException("LifetimeHours needs to be a positive value.");
-        }
-        if (Encoding.UTF8.GetByteCount(options.SigningKey) < 32)
+            new(JwtRegisteredClaimNames.Sub, user.Id.ToString()),
+            new(JwtRegisteredClaimNames.Name, $"{user.Name} {user.Surname}".Trim()),
+            new(JwtRegisteredClaimNames.Email, user.Email),
+            new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
+        };
+        claims.AddRange(roles.Select(role => new Claim(RoleClaimType, role)));
+
+        var descriptor = new SecurityTokenDescriptor
         {
-            throw new ArgumentOutOfRangeException("Singing key needs to be at least 256 bits long");
-        }
-        return options;
+            Subject = new ClaimsIdentity(claims),
+            Issuer = _opt.Issuer,
+            Audience = _opt.Audience,
+            NotBefore = now,
+            Expires = now.AddHours(_opt.LifetimeHours),
+            SigningCredentials = _credentials
+        };
+
+        return _handler.CreateToken(descriptor);
     }
 }

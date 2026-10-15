@@ -1,45 +1,42 @@
-using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using WorktimeSystem.Api.Application.Services;
-using WorktimeSystem.Api.Core.Domain;
-using WorktimeSystem.Contracts;
+using Microsoft.IdentityModel.JsonWebTokens;
+using ServiceTracker.Contracts;
 
-namespace WorktimeSystem.Api.Endpoints;
+namespace ServiceTracker.Api.Endpoints;
 
-
+[ApiController]
+[Route("api/auth")]
 public class AuthController(IUserService userService) : ControllerBase
 {
-    private readonly IUserService _userService = userService;
-
     [AllowAnonymous]
     [HttpPost("register")]
-    public async Task<IActionResult> Register([FromBody] UserIn user, CancellationToken ct)
+    public async Task<ActionResult<UserDto>> Register([FromBody] UserIn request, CancellationToken ct)
     {
-        var user = await _userService.Register(user, ct);
-
-        if (user is null) return BadRequest();
-        return Ok(user);
+        var result = await userService.RegisterAsync(request, ct);
+        if (!result.Succeeded) return BadRequest(new { errors = result.Errors });
+        return Ok(result.User);
     }
 
     [AllowAnonymous]
     [HttpPost("login")]
-    public async Task<IActionResult> Login([FromBody] LoginRequest login, CancellationToken ct)
+    public async Task<ActionResult<LoginResponse>> Login([FromBody] LoginRequest request, CancellationToken ct)
     {
-        var token = await _userService.Login(login.Username, login.Password, ct);
+        var token = await userService.LoginAsync(request.Username, request.Password, ct);
         if (token is null) return Unauthorized();
-        return Ok(token);
+        return Ok(new LoginResponse(token));
     }
 
     [Authorize]
     [HttpGet("me")]
-    public async Task<IActionResult> Me(CancellationToken ct)
+    public async Task<ActionResult<UserDto>> Me(CancellationToken ct)
     {
-        var userEmail = User.FindFirst(JwtRegisteredClaimNames.Email)?.Value;
-        if (userEmail is null) return Unauthorized();
-        var user = await _userService.GetByEmail(userSid, ct);
+        var email = User.FindFirstValue(JwtRegisteredClaimNames.Email);
+        if (email is null) return Unauthorized();
+
+        var user = await userService.GetByEmailAsync(email, ct);
         if (user is null) return NotFound();
         return Ok(user);
     }
-
 }

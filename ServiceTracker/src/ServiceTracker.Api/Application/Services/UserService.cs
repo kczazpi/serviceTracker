@@ -1,78 +1,74 @@
-using System.Security.Authentication;
 using Microsoft.AspNetCore.Identity;
-using WorktimeSystem.Api.Core.Domain;
-using WorktimeSystem.Api.Core.Repositories;
-using WorktimeSystem.Contracts;
+using ServiceTracker.Api.Core.Domain;
+using ServiceTracker.Api.Core.Mapping;
+using ServiceTracker.Contracts;
 
-namespace WorktimeSystem.Api.Application.Services;
+namespace ServiceTracker.Api.Application.Services;
 
 public class UserService(
     IJwtService jwtService,
+    IUserRepository userRepository,
     UserManager<ApplicationUser> userManager,
-    IUnitOfWork uow,
-    ILogger<UserService> log) : IEmployeeService
+    SignInManager<ApplicationUser> signInManager,
+    ILogger<UserService> log) : IUserService
 {
-    private readonly IJwtService _jwtService = jwtService;
-    private readonly UserManager<ApplicationUser> _userManager = userManager;
-    private readonly IUnitOfWork _uow = uow;
-    private readonly ILogger<UserService> _log = log;
-
-    public async Task<ApplicationUser> Register(UserIn newUser, CancellationToken ct)
+    public async Task<RegisterResult> RegisterAsync(UserIn newUser, CancellationToken ct)
     {
-        try
+        if (await userManager.FindByEmailAsync(newUser.Email) is not null)
         {
-            var exists = await _userManager.FindByEmailAsync(newUser.Email, ct);
-            if (exists is not null) throw new Exception("User already exists, please login");
-            var newEmployee = new ApplicationUser
-            {
-                Name = newUser.Name,
-                Surname = newUser.Surname,
-                Email = newUser.Email ?? newUser.Email,
-                IsActive = newUser.IsEnabled,
-                CreatedAt = DateTimeOffset.UtcNow,
-                UpdatedAt = DateTimeOffset.UtcNow,
-            };
-
-            var appUser = await _userRepo.GetByEmployeeId(createdEmployee.Id, ct);
-            if (appUser is null)
-            {
-                var result = await _userManager.CreateAsync(
-                        new ApplicationUser
-                        {
-                            Name = newUser.Name,
-                            Surname = newUser.Surname,
-                            LastLoginAt = newEmployee.UpdatedAt
-                        }, newUser.password
-                    );
-                if (!result.Succeeded) throw new Exception("Identity user creaton failed");
-            }
-            else
-            {
-                appUser.LastLoginAt = DateTimeOffset.UtcNow;
-                _ = await _userManager.UpdateAsync(appUser) ?? throw new Exception("Identity user update failed");
-            }
-            return createdEmployee;
+            return RegisterResult.Failure("A user with this email already exists, please login.");
         }
-        catch (Exception ex)
+
+        var now = DateTimeOffset.UtcNow;
+        var user = new ApplicationUser
         {
-            _log.LogError(ex, $"Registration failed for Email: {newUser.Email}");
-            throw;
+            UserName = newUser.Username,
+            Email = newUser.Email,
+            Name = newUser.Name,
+            Surname = newUser.Surname,
+            IsActive = true,
+            CreatedAt = now,
+            UpdatedAt = now,
+        };
+
+        var created = await userManager.CreateAsync(user, newUser.Password);
+        if (!created.Succeeded)
+        {
+            return RegisterResult.Failure(created.Errors.Select(e => e.Description));
         }
+
+        var roleAssigned = await userManager.AddToRoleAsync(user, Roles.User);
+        if (!roleAssigned.Succeeded)
+        {
+            log.LogError("Assigning role {Role} failed for {Email}: {Errors}",
+                Roles.User, newUser.Email, string.Join("; ", roleAssigned.Errors.Select(e => e.Description)));
+            await userManager.DeleteAsync(user);
+            return RegisterResult.Failure("Registration failed, please try again later.");
+        }
+
+        log.LogInformation("Registered user {Email}", newUser.Email);
+        return RegisterResult.Success(user.ToDto());
     }
 
-    public async Task<string> Login(string username, string password, CancellationToken ct)
+    public async Task<string?> LoginAsync(string username, string password, CancellationToken ct)
     {
-        //TODO:Validate login 
-        return await _jwtService.GenerateToken(user, roles);
+        var user = await userManager.FindByNameAsync(username);
+        if (user is null || !user.IsActive) return null;
+
+        // Counts failed attempts and enforces the lockout configured in Program.cs.
+        var result = await signInManager.CheckPasswordSignInAsync(user, password, lockoutOnFailure: true);
+        if (!result.Succeeded) return null;
+
+        user.LastLoginAt = DateTimeOffset.UtcNow;
+        await userManager.UpdateAsync(user);
+
+        var roles = (await userManager.GetRolesAsync(user)).ToList();
+        return jwtService.GenerateToken(user.ToDto(), roles);
     }
 
-    public async Task<bool> Update(ApplicationUser user, CancellationToken ct)
-    {
-        return await _userManager.UpdateAsync(user, ct);
-    }
+    public Task<UserDto?> GetByEmailAsync(string email, CancellationToken ct) =>
+        userRepository.GetByEmailAsync(email, ct);
 
-    public async Task<List<ApplicationUser>?> GetAll(CancellationToken ct)
-    {
-        return await _userManager.GetAll(ct);
-    }
+    public Task<IReadOnlyList<UserDto>> GetAllAsync(CancellationToken ct) =>
+        userRepository.GetAllAsync(ct);
 }

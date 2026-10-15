@@ -1,140 +1,135 @@
-using WorktimeSystem.Api.Infrastructure.Persistence;
+using System.Text;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
-using WorktimeSystem.Api.Application.Services;
+using Microsoft.Extensions.Options;
+using Microsoft.IdentityModel.JsonWebTokens;
 using Microsoft.IdentityModel.Tokens;
-using Microsoft.AspNetCore.Authentication.JwtBearer;
-using WorktimeSystem.Api.Core.Domain;
-using WorktimeSystem.Api.Core.Repositories;
-using Microsoft.AspNetCore.Identity;
-// using WorktimeSystem.Api.BackgroundJobs;
-
+using ServiceTracker.Api.Application.Services;
+using ServiceTracker.Api.Core.Domain;
+using ServiceTracker.Api.Core.Repositories;
+using ServiceTracker.Api.Infrastructure.Persistence;
+using ServiceTracker.Contracts;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddDbContext<DbContext>(options =>
-    options.UseNpgsql(builder.Configuration.GetConnectionString("Db")));
+builder.Services.AddDbContext<ServiceTrackerDbContext>(options =>
+    options.UseNpgsql(builder.Configuration.GetConnectionString("Db"))
+        .UseSnakeCaseNamingConvention());
 
-builder.Services.AddIdentity<ApplicationUser, ApplicationRole>()
-    .AddEntityFrameworkStores<DbContext>();
+// AddIdentityCore (not AddIdentity) so no cookie auth is registered; this API only uses JWT bearer tokens.
+builder.Services.AddIdentityCore<ApplicationUser>(options =>
+    {
+        // Password settings.
+        options.Password.RequireDigit = true;
+        options.Password.RequireLowercase = true;
+        options.Password.RequireNonAlphanumeric = true;
+        options.Password.RequireUppercase = true;
+        options.Password.RequiredLength = 6;
+        options.Password.RequiredUniqueChars = 1;
 
-builder.Services.Configure<IdentityOptions>(options =>
-{
-    // Password settings.
-    options.Password.RequireDigit = true;
-    options.Password.RequireLowercase = true;
-    options.Password.RequireNonAlphanumeric = true;
-    options.Password.RequireUppercase = true;
-    options.Password.RequiredLength = 6;
-    options.Password.RequiredUniqueChars = 1;
+        // Lockout settings.
+        options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(5);
+        options.Lockout.MaxFailedAccessAttempts = 5;
+        options.Lockout.AllowedForNewUsers = true;
 
-    // Lockout settings.
-    options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(5);
-    options.Lockout.MaxFailedAccessAttempts = 5;
-    options.Lockout.AllowedForNewUsers = true;
+        // User settings.
+        options.User.AllowedUserNameCharacters =
+            "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._@+";
+        options.User.RequireUniqueEmail = true;
+    })
+    .AddRoles<ApplicationRole>()
+    .AddEntityFrameworkStores<ServiceTrackerDbContext>()
+    .AddSignInManager();
 
-    // User settings.
-    options.User.AllowedUserNameCharacters =
-    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._@+";
-    options.User.RequireUniqueEmail = true;
-});
+// Fails at startup with a clear message if the Jwt section is missing or invalid.
+builder.Services.AddOptions<JwtOptions>()
+    .Bind(builder.Configuration.GetSection(JwtOptions.SectionName))
+    .ValidateDataAnnotations()
+    .ValidateOnStart();
 
-
-builder.Services.AddScoped<JwtService>();
-builder.Services.Configure<JwtService>(builder.Configuration.GetSection("Jwt"));
-
+builder.Services.AddSingleton<IJwtService, JwtService>();
 builder.Services.AddScoped<IUserRepository, UserRepository>();
+builder.Services.AddScoped<IWorkDayRepository, WorkDayRepository>();
 builder.Services.AddScoped<IUserService, UserService>();
 
-
 builder.Services.AddAuthorization();
-builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-    .AddJwtBearer(options =>
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJwtBearer();
+builder.Services.AddOptions<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme)
+    .Configure<IOptions<JwtOptions>>((bearer, jwtOptions) =>
     {
-        options.TokenValidationParameters = new TokenValidationParameters
+        var jwt = jwtOptions.Value;
+        bearer.MapInboundClaims = false; // keep claim names as issued ("sub", "email", "role", ...)
+        bearer.TokenValidationParameters = new TokenValidationParameters
         {
             ValidateIssuer = true,
             ValidateAudience = true,
             ValidateLifetime = true,
             ValidateIssuerSigningKey = true,
-            ValidIssuer = builder.Configuration["Jwt:Issuer"],
-            ValidAudience = builder.Configuration["Jwt:Audience"],
-            IssuerSigningKey = new SymmetricSecurityKey(
-                System.Text.Encoding.UTF8.GetBytes(builder.Configuration["Jwt:SigningKey"]!)
-            )
+            ValidIssuer = jwt.Issuer,
+            ValidAudience = jwt.Audience,
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwt.SigningKey)),
+            NameClaimType = JwtRegisteredClaimNames.Name,
+            RoleClaimType = JwtService.RoleClaimType
         };
     });
+
 builder.Services.AddControllers();
 
 // Test health check endpoint
 builder.Services.AddHealthChecks()
     .AddCheck("Test", () => HealthCheckResult.Healthy("OK"));
 
-
 var app = builder.Build();
 app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapHealthChecks("/health");
-using (var scope = app.Services.CreateAsyncScope())
+app.MapControllers();
+
+await using (var scope = app.Services.CreateAsyncScope())
 {
     var services = scope.ServiceProvider;
+
     if (app.Environment.IsDevelopment())
     {
-        Console.WriteLine("Migration start");
-        var tries = 0;
-        while (tries < 5)
+        await MigrateWithRetryAsync(services.GetRequiredService<ServiceTrackerDbContext>(), app.Logger);
+    }
+
+    var roleManager = services.GetRequiredService<RoleManager<ApplicationRole>>();
+    foreach (var roleName in Roles.All)
+    {
+        if (await roleManager.RoleExistsAsync(roleName)) continue;
+
+        var created = await roleManager.CreateAsync(new ApplicationRole { Name = roleName });
+        if (!created.Succeeded)
         {
-            try
-            {
-                var context = services.GetRequiredService<WorktimeDbContext>();
-                tries++;
-                await context.Database.MigrateAsync();
-                Console.WriteLine("All db tables created");
-                break;
-            }
-            catch (Exception ex)
-            {
-                if (ex is Npgsql.PostgresException)
-                {
-                    Console.WriteLine("Error while creating db tables {0}", ex.Message);
-                }
-                else if (ex is Npgsql.NpgsqlException)
-                {
-                    Console.WriteLine("NpgsqlException : {0} - {1}", ex.GetType().Name, ex.Message);
-                }
-                else
-                {
-                    Console.WriteLine("Other exception : {0} - {1}", ex.GetType().Name, ex.Message);
-                }
-                if (tries >= 5)
-                {
-                    Console.WriteLine("Retry limit reached. {0}", ex.Message);
-                    throw;
-                }
-                await Task.Delay(TimeSpan.FromMilliseconds(1000 * tries));
-            }
+            throw new InvalidOperationException(
+                $"Seeding role '{roleName}' failed: {string.Join("; ", created.Errors.Select(e => e.Description))}");
         }
     }
-    var roleManager = services.GetRequiredService<RoleManager<ApplicationRole>>();
-    foreach (var role in typeof(Roles).GetFields())
+    app.Logger.LogInformation("All identity roles seeded");
+}
+
+app.Run();
+
+// The database container may still be starting up, so retry a few times before giving up.
+static async Task MigrateWithRetryAsync(ServiceTrackerDbContext context, ILogger logger)
+{
+    const int maxTries = 5;
+    for (var tries = 1; ; tries++)
     {
         try
         {
-            if (!await roleManager.RoleExistsAsync(role.Name))
-            {
-                await roleManager.CreateAsync(new ApplicationRole { Name = (string)role.GetValue(null)! });
-            }
+            await context.Database.MigrateAsync();
+            logger.LogInformation("Database migrated");
+            return;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (tries < maxTries)
         {
-            Console.WriteLine("Error while seeding identity roles {0}", ex.Message);
-            throw;
+            logger.LogWarning(ex, "Migration attempt {Try}/{Max} failed, retrying", tries, maxTries);
+            await Task.Delay(TimeSpan.FromSeconds(tries));
         }
     }
-    Console.WriteLine("All identity roles seeded");
 }
-
-
-app.MapControllers();
-app.Run();

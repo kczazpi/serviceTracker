@@ -1,6 +1,6 @@
 namespace ServiceTracker.Contracts;
 
-public class WorkDay
+public class WorkDayDto
 {
     public Guid Id { get; set; }
     public Guid UserId { get; set; }
