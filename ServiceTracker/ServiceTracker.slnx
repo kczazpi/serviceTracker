@@ -3,4 +3,7 @@
     <Project Path="src/ServiceTracker.Api/ServiceTracker.Api.csproj" />
     <Project Path="src/ServiceTracker.Contracts/ServiceTracker.Contracts.csproj" />
   </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/ServiceTracker.Api.Tests/ServiceTracker.Api.Tests.csproj" />
+  </Folder>
 </Solution>
