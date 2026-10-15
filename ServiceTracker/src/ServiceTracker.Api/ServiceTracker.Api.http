@@ -1,0 +1,54 @@
+# Manual requests for VS Code (REST Client), Rider, or Visual Studio.
+# Adjust @host to wherever the API listens. Run "login" first and paste the token into @token.
+
+@host = http://localhost:5000
+@token =
+@workDayId =
+
+### Register
+POST {{host}}/api/auth/register
+Content-Type: application/json
+
+{
+  "username": "jane",
+  "name": "Jane",
+  "surname": "Doe",
+  "email": "jane@example.com",
+  "password": "Passw0rd!"
+}
+
+### Login (copy "token" from the response into @token above)
+POST {{host}}/api/auth/login
+Content-Type: application/json
+
+{ "username": "jane", "password": "Passw0rd!" }
+
+### Who am I
+GET {{host}}/api/auth/me
+Authorization: Bearer {{token}}
+
+### Log a work day (copy "id" from the response into @workDayId)
+POST {{host}}/api/workdays
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "date": "2026-10-16", "workedHours": 8 }
+
+### List my work days (from/to are optional, yyyy-MM-dd)
+GET {{host}}/api/workdays?from=2026-10-01&to=2026-10-31
+Authorization: Bearer {{token}}
+
+### Get one
+GET {{host}}/api/workdays/{{workDayId}}
+Authorization: Bearer {{token}}
+
+### Change the hours
+PUT {{host}}/api/workdays/{{workDayId}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "workedHours": 7.5 }
+
+### Delete
+DELETE {{host}}/api/workdays/{{workDayId}}
+Authorization: Bearer {{token}}

@@ -52,6 +52,7 @@ builder.Services.AddOptions<JwtOptions>()
 builder.Services.AddSingleton<IJwtService, JwtService>();
 builder.Services.AddScoped<IUserRepository, UserRepository>();
 builder.Services.AddScoped<IWorkDayRepository, WorkDayRepository>();
+builder.Services.AddScoped<IWorkDayService, WorkDayService>();
 builder.Services.AddScoped<IUserService, UserService>();
 
 builder.Services.AddAuthorization();
