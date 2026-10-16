@@ -17,7 +17,7 @@ public class WorkDayServiceTests
     private static readonly DateOnly Oct16 = new(2026, 10, 16);
     private static readonly DateOnly Oct17 = new(2026, 10, 17);
 
-    private static readonly CancellationToken Ct = CancellationToken.None;
+    private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     private readonly FakeWorkDayRepository _repo = new();
     private readonly WorkDayService _service;

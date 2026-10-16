@@ -18,7 +18,7 @@ public class WorkDaysControllerTests
     private static readonly Guid AliceId = new("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
     private static readonly Guid BobId = new("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
     private static readonly DateOnly Oct15 = new(2026, 10, 15);
-    private static readonly CancellationToken Ct = CancellationToken.None;
+    private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     private readonly FakeWorkDayRepository _repo = new();
 
