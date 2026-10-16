@@ -1,7 +1,15 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import { addMonths, defaultDateFor, formatDayLabel, formatHours, formatMonth, monthRange, toIsoDate } from './dates';
-
-afterEach(() => vi.useRealTimers());
+import { describe, expect, it } from 'vitest';
+import {
+  addMonths,
+  dayOfMonth,
+  daysInMonth,
+  formatDayLabel,
+  formatHours,
+  formatMonth,
+  monthRange,
+  toIsoDate,
+  weekdayOffset,
+} from './dates';
 
 describe('monthRange', () => {
   it('covers the whole month', () => {
@@ -22,13 +30,26 @@ describe('addMonths', () => {
   });
 });
 
-describe('defaultDateFor', () => {
-  it('is today when today is inside the month, otherwise the first day', () => {
-    vi.useFakeTimers({ toFake: ['Date'] });
-    vi.setSystemTime(new Date(2026, 9, 16, 12));
+describe('calendar layout', () => {
+  it('lists every date of the month in order', () => {
+    const october = daysInMonth({ year: 2026, month: 9 });
 
-    expect(defaultDateFor({ year: 2026, month: 9 })).toBe('2026-10-16');
-    expect(defaultDateFor({ year: 2026, month: 10 })).toBe('2026-11-01');
+    expect(october).toHaveLength(31);
+    expect(october[0]).toBe('2026-10-01');
+    expect(october[30]).toBe('2026-10-31');
+    expect(daysInMonth({ year: 2028, month: 1 })).toHaveLength(29);
+    expect(daysInMonth({ year: 2027, month: 1 })).toHaveLength(28);
+  });
+
+  it('counts the empty cells before the 1st when weeks start on Monday', () => {
+    expect(weekdayOffset({ year: 2026, month: 9 })).toBe(3); // Thu 1 Oct 2026
+    expect(weekdayOffset({ year: 2027, month: 1 })).toBe(0); // Mon 1 Feb 2027
+    expect(weekdayOffset({ year: 2026, month: 10 })).toBe(6); // Sun 1 Nov 2026
+  });
+
+  it('extracts the day of the month', () => {
+    expect(dayOfMonth('2026-10-05')).toBe(5);
+    expect(dayOfMonth('2026-10-31')).toBe(31);
   });
 });
 

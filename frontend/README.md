@@ -1,7 +1,7 @@
 # Service Tracker frontend
 
-React 19 + Vite + TypeScript. Sign in or register, then log, edit and delete the hours worked per day,
-browsing month by month.
+React 19 + Vite + TypeScript. Sign in or register, then click a day in the monthly calendar to log, change or clear the hours worked;
+logged days turn green. Browse month by month.
 
 ## Run it
 

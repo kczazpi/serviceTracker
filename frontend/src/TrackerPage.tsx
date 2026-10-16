@@ -1,15 +1,7 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ApiError, createWorkDay, deleteWorkDay, listWorkDays, updateWorkDay, type User, type WorkDay } from './api';
-import {
-  addMonths,
-  currentMonth,
-  defaultDateFor,
-  formatDayLabel,
-  formatHours,
-  formatMonth,
-  monthRange,
-  type YearMonth,
-} from './dates';
+import Calendar from './Calendar';
+import { addMonths, currentMonth, formatHours, formatMonth, monthRange, todayIso, type YearMonth } from './dates';
 import ErrorList from './ErrorList';
 
 interface Props {
@@ -18,19 +10,18 @@ interface Props {
 }
 
 const errorMessages = (err: unknown) => (err instanceof ApiError ? err.messages : ['Something went wrong.']);
-const byDate = (a: WorkDay, b: WorkDay) => a.date.localeCompare(b.date);
+const sortByDate = (a: WorkDay, b: WorkDay) => a.date.localeCompare(b.date);
 
 export default function TrackerPage({ user, onLogout }: Props) {
   const [month, setMonth] = useState<YearMonth>(currentMonth);
   const [days, setDays] = useState<WorkDay[]>([]);
   const [loading, setLoading] = useState(true);
-  const [errors, setErrors] = useState<string[]>([]);
-
-  const [date, setDate] = useState(() => defaultDateFor(month));
-  const [hours, setHours] = useState('');
   const [saving, setSaving] = useState(false);
+  const [errors, setErrors] = useState<string[]>([]);
+  const [openDate, setOpenDate] = useState<string | null>(null);
 
   const range = useMemo(() => monthRange(month), [month]);
+  const daysByDate = useMemo(() => new Map(days.map((d) => [d.date, d])), [days]);
 
   useEffect(() => {
     let cancelled = false;
@@ -55,45 +46,47 @@ export default function TrackerPage({ user, onLogout }: Props) {
   }, [range]);
 
   function changeMonth(delta: number) {
-    const next = addMonths(month, delta);
-    setMonth(next);
-    setDate(defaultDateFor(next));
+    setMonth((current) => addMonths(current, delta));
+    setOpenDate(null);
   }
 
-  async function handleAdd(e: FormEvent) {
-    e.preventDefault();
+  // Picking hours on an empty day logs it; on a logged day it changes the hours.
+  async function handleSelectHours(date: string, hours: number) {
+    const existing = daysByDate.get(date);
+    if (existing?.workedHours === hours) {
+      setOpenDate(null);
+      return;
+    }
+
     setErrors([]);
     setSaving(true);
     try {
-      const created = await createWorkDay(date, Number(hours));
-      setDays((current) => [...current, created].sort(byDate));
-      setHours('');
+      const saved = existing ? await updateWorkDay(existing.id, hours) : await createWorkDay(date, hours);
+      setDays((current) =>
+        existing ? current.map((d) => (d.id === saved.id ? saved : d)) : [...current, saved].sort(sortByDate),
+      );
+      setOpenDate(null);
     } catch (err) {
-      setErrors(errorMessages(err));
+      setErrors(errorMessages(err)); // the menu stays open so the user can pick again
     } finally {
       setSaving(false);
     }
   }
 
-  async function handleUpdate(id: string, workedHours: number): Promise<boolean> {
-    setErrors([]);
-    try {
-      const updated = await updateWorkDay(id, workedHours);
-      setDays((current) => current.map((d) => (d.id === id ? updated : d)));
-      return true;
-    } catch (err) {
-      setErrors(errorMessages(err));
-      return false;
-    }
-  }
+  async function handleClear(date: string) {
+    const existing = daysByDate.get(date);
+    if (!existing) return;
 
-  async function handleDelete(id: string) {
     setErrors([]);
+    setSaving(true);
     try {
-      await deleteWorkDay(id);
-      setDays((current) => current.filter((d) => d.id !== id));
+      await deleteWorkDay(existing.id);
+      setDays((current) => current.filter((d) => d.id !== existing.id));
+      setOpenDate(null);
     } catch (err) {
       setErrors(errorMessages(err));
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -111,141 +104,39 @@ export default function TrackerPage({ user, onLogout }: Props) {
         </button>
       </header>
 
-      <main className="card">
+      <main className="card wide">
         <nav className="month-nav">
-          <button type="button" aria-label="Previous month" onClick={() => changeMonth(-1)}>
+          <button type="button" aria-label="Previous month" disabled={saving} onClick={() => changeMonth(-1)}>
             ‹
           </button>
           <h2>{formatMonth(month)}</h2>
-          <button type="button" aria-label="Next month" onClick={() => changeMonth(1)}>
+          <button type="button" aria-label="Next month" disabled={saving} onClick={() => changeMonth(1)}>
             ›
           </button>
         </nav>
 
-        <form className="add-form" onSubmit={handleAdd}>
-          <label>
-            Date
-            <input type="date" value={date} min={range.from} max={range.to} onChange={(e) => setDate(e.target.value)} required />
-          </label>
-          <label>
-            Hours
-            <input
-              type="number"
-              inputMode="decimal"
-              min="0.01"
-              max="24"
-              step="any"
-              value={hours}
-              onChange={(e) => setHours(e.target.value)}
-              required
-            />
-          </label>
-          <button type="submit" className="primary" disabled={saving}>
-            Add day
-          </button>
-        </form>
+        <p className="hint">Click a day to log your hours. Days with hours turn green.</p>
 
         <ErrorList messages={errors} />
 
-        {loading ? (
-          <p className="muted">Loading…</p>
-        ) : days.length === 0 ? (
-          <p className="muted">No work days logged for this month.</p>
-        ) : (
-          <table>
-            <thead>
-              <tr>
-                <th>Date</th>
-                <th>Hours</th>
-                <th>
-                  <span className="sr-only">Actions</span>
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {days.map((day) => (
-                <DayRow key={day.id} day={day} onSave={handleUpdate} onDelete={handleDelete} />
-              ))}
-            </tbody>
-            <tfoot>
-              <tr>
-                <th>
-                  {days.length} {days.length === 1 ? 'day' : 'days'}
-                </th>
-                <th>{formatHours(total)} h</th>
-                <th />
-              </tr>
-            </tfoot>
-          </table>
-        )}
+        <Calendar
+          month={month}
+          daysByDate={daysByDate}
+          today={todayIso()}
+          openDate={openDate}
+          loading={loading}
+          busy={saving}
+          onOpen={setOpenDate}
+          onSelectHours={handleSelectHours}
+          onClear={handleClear}
+        />
+
+        <p className="summary">
+          {loading
+            ? 'Loading…'
+            : `${days.length} ${days.length === 1 ? 'day' : 'days'} logged · ${formatHours(total)} h`}
+        </p>
       </main>
     </div>
-  );
-}
-
-interface RowProps {
-  day: WorkDay;
-  onSave: (id: string, hours: number) => Promise<boolean>;
-  onDelete: (id: string) => void;
-}
-
-function DayRow({ day, onSave, onDelete }: RowProps) {
-  const [editing, setEditing] = useState(false);
-  const [value, setValue] = useState(String(day.workedHours));
-  const label = formatDayLabel(day.date);
-
-  async function save(e: FormEvent) {
-    e.preventDefault();
-    if (await onSave(day.id, Number(value))) setEditing(false);
-  }
-
-  if (editing) {
-    return (
-      <tr>
-        <td>{label}</td>
-        <td colSpan={2}>
-          <form className="inline-edit" onSubmit={save}>
-            <input
-              type="number"
-              aria-label={`Hours for ${label}`}
-              min="0.01"
-              max="24"
-              step="any"
-              value={value}
-              onChange={(e) => setValue(e.target.value)}
-              required
-              autoFocus
-            />
-            <button type="submit" className="primary">
-              Save
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setEditing(false);
-                setValue(String(day.workedHours));
-              }}
-            >
-              Cancel
-            </button>
-          </form>
-        </td>
-      </tr>
-    );
-  }
-
-  return (
-    <tr>
-      <td>{label}</td>
-      <td>{formatHours(day.workedHours)} h</td>
-      <td className="actions">
-        <button type="button" aria-label={`Edit ${label}`} onClick={() => setEditing(true)}>
-          Edit
-        </button>
-        <button type="button" aria-label={`Delete ${label}`} className="danger" onClick={() => onDelete(day.id)}>
-          Delete
-        </button>
-      </td>
-    </tr>
   );
 }

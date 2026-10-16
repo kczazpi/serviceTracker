@@ -31,16 +31,27 @@ export function monthRange({ year, month }: YearMonth): { from: string; to: stri
   };
 }
 
+/** Every date of the month as yyyy-MM-dd, in order. */
+export function daysInMonth({ year, month }: YearMonth): string[] {
+  const count = new Date(year, month + 1, 0).getDate();
+  return Array.from({ length: count }, (_, i) => `${year}-${pad(month + 1)}-${pad(i + 1)}`);
+}
+
+export const WEEKDAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const;
+
+/** Empty cells before the 1st of the month when weeks start on Monday (Mon = 0 … Sun = 6). */
+export function weekdayOffset({ year, month }: YearMonth): number {
+  return (new Date(year, month, 1).getDay() + 6) % 7;
+}
+
+/** "2026-10-16" -> 16 */
+export function dayOfMonth(iso: string): number {
+  return Number(iso.slice(8, 10));
+}
+
 export function addMonths({ year, month }: YearMonth, delta: number): YearMonth {
   const index = year * 12 + month + delta;
   return { year: Math.floor(index / 12), month: ((index % 12) + 12) % 12 };
-}
-
-/** Today if it falls inside the month, otherwise the 1st: a sensible default for the "add day" form. */
-export function defaultDateFor(month: YearMonth): string {
-  const { from, to } = monthRange(month);
-  const today = todayIso();
-  return today >= from && today <= to ? today : from;
 }
 
 export function formatMonth({ year, month }: YearMonth): string {
