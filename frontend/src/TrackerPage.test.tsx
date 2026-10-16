@@ -124,7 +124,49 @@ describe('days in the future', () => {
     expect(createWorkDay).not.toHaveBeenCalled();
   });
 
-  it('can still be corrected when they already have hours (entered some other way)', async () => {
+  it('can be looked at: the next month opens, with every day locked', async () => {
+    listWorkDays.mockResolvedValue([]);
+    const user = userEvent.setup();
+    renderPage();
+    await dayCell('Thu, Oct 1');
+
+    expect(screen.getByRole('button', { name: 'Next month' })).toBeEnabled();
+    await user.click(screen.getByRole('button', { name: 'Next month' }));
+
+    expect(await screen.findByRole('heading', { name: 'November 2026' })).toBeInTheDocument();
+    expect(listWorkDays).toHaveBeenLastCalledWith('2026-11-01', '2026-11-30');
+    const cells = await screen.findAllByRole('button', { name: ALL_CELLS });
+    expect(cells).toHaveLength(30);
+    expect(cells.every((cell) => (cell as HTMLButtonElement).disabled)).toBe(true);
+    expect(cells.every((cell) => cell.classList.contains('future'))).toBe(true);
+
+    await user.click(await dayCell('Sun, Nov 1'));
+    await user.click(await dayCell('Mon, Nov 30'));
+    expect(anyMenu()).not.toBeInTheDocument();
+    expect(createWorkDay).not.toHaveBeenCalled();
+    expect(screen.getByText('0 days logged · 0 h')).toBeInTheDocument();
+  });
+
+  it('can be browsed freely in both directions, and the past stays open', async () => {
+    listWorkDays.mockResolvedValue([]);
+    const user = userEvent.setup();
+    renderPage();
+    await dayCell('Thu, Oct 1');
+
+    await user.click(screen.getByRole('button', { name: 'Next month' }));
+    await user.click(screen.getByRole('button', { name: 'Next month' }));
+    expect(await screen.findByRole('heading', { name: 'December 2026' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Next month' })).toBeEnabled();
+
+    await user.click(screen.getByRole('button', { name: 'Previous month' }));
+    await user.click(screen.getByRole('button', { name: 'Previous month' }));
+    await user.click(screen.getByRole('button', { name: 'Previous month' }));
+    expect(await screen.findByRole('heading', { name: 'September 2026' })).toBeInTheDocument();
+    expect(listWorkDays).toHaveBeenLastCalledWith('2026-09-01', '2026-09-30');
+    expect((await dayCell('Wed, Sep 30')).hasAttribute('disabled')).toBe(false);
+  });
+
+  it('only offers to clear hours that are already there (they can never be set)', async () => {
     listWorkDays.mockResolvedValue([day('f', '2026-10-20', 4)]);
     deleteWorkDay.mockResolvedValue(undefined);
     const user = userEvent.setup();
@@ -134,28 +176,45 @@ describe('days in the future', () => {
     expect(cell).toBeEnabled();
     expect(cell).toHaveClass('logged');
     await user.click(cell);
-    await user.click(within(menuFor('Tue, Oct 20')).getByRole('button', { name: 'Clear day' }));
 
+    const menu = menuFor('Tue, Oct 20');
+    expect(within(menu).getAllByRole('button').map((b) => b.textContent)).toEqual(['Clear day']);
+    expect(within(menu).getByRole('button', { name: 'Clear day' })).toHaveFocus();
+    expect(within(menu).getByText(/can't be set/)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/^Hours \(up to/)).not.toBeInTheDocument();
+
+    await user.click(within(menu).getByRole('button', { name: 'Clear day' }));
     expect(deleteWorkDay).toHaveBeenCalledWith('f');
+    expect(updateWorkDay).not.toHaveBeenCalled();
+    expect(await screen.findByRole('button', { name: /^Tue, Oct 20, nothing logged/ })).toBeDisabled();
   });
 
-  it('cannot be reached by going forward from the current month', async () => {
-    listWorkDays.mockResolvedValue([]);
+  it('shows the same clear-only menu for a future day with a non-preset value', async () => {
+    listWorkDays.mockResolvedValue([day('f', '2026-10-20', 6.5)]);
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await dayCell('Tue, Oct 20'));
+
+    const menu = menuFor('Tue, Oct 20');
+    expect(within(menu).getAllByRole('button').map((b) => b.textContent)).toEqual(['Clear day']);
+    expect(within(menu).getByRole('button', { name: 'Clear day' })).toHaveFocus();
+  });
+
+  it('logged future days of the next month work the same way', async () => {
+    listWorkDays.mockImplementation(async (from) => (from === '2026-11-01' ? [day('n', '2026-11-05', 8)] : []));
     const user = userEvent.setup();
     renderPage();
     await dayCell('Thu, Oct 1');
 
-    expect(screen.getByRole('button', { name: 'Next month' })).toBeDisabled();
-
-    await user.click(screen.getByRole('button', { name: 'Previous month' }));
-    expect(await screen.findByRole('heading', { name: 'September 2026' })).toBeInTheDocument();
-    expect(listWorkDays).toHaveBeenLastCalledWith('2026-09-01', '2026-09-30');
-    expect(screen.getByRole('button', { name: 'Next month' })).toBeEnabled();
-    expect((await dayCell('Wed, Sep 30')).hasAttribute('disabled')).toBe(false); // the whole past is open
-
     await user.click(screen.getByRole('button', { name: 'Next month' }));
-    expect(await screen.findByRole('heading', { name: 'October 2026' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Next month' })).toBeDisabled();
+    const cell = await dayCell('Thu, Nov 5');
+    expect(cell).toHaveClass('logged');
+    expect(cell).toBeEnabled();
+    expect(await dayCell('Fri, Nov 6')).toBeDisabled();
+    await user.click(cell);
+
+    expect(within(menuFor('Thu, Nov 5')).getAllByRole('button').map((b) => b.textContent)).toEqual(['Clear day']);
   });
 });
 

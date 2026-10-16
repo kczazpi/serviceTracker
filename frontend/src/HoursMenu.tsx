@@ -8,19 +8,21 @@ interface Props {
   /** Hours currently logged for the day, or null when nothing is logged. */
   current: number | null;
   busy: boolean;
+  /** False for days in the future: the hours can then only be cleared, never set. */
+  allowSet: boolean;
   align: 'left' | 'right';
   onSelect: (hours: number) => void;
   onClear: () => void;
 }
 
-export default function HoursMenu({ id, label, current, busy, align, onSelect, onClear }: Props) {
+export default function HoursMenu({ id, label, current, busy, allowSet, align, onSelect, onClear }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const firstRun = useRef(true);
 
   // A logged value that isn't one of the presets (6.5 h, 24 h …) shows up under "Custom", already filled in.
   const hasCustomValue = current !== null && !(HOUR_PRESETS as readonly number[]).includes(current);
-  const [customOpen, setCustomOpen] = useState(hasCustomValue);
+  const [customOpen, setCustomOpen] = useState(allowSet && hasCustomValue);
   const [text, setText] = useState(hasCustomValue ? String(current) : '');
   const customHours = parseCustomHours(text);
 
@@ -44,30 +46,34 @@ export default function HoursMenu({ id, label, current, busy, align, onSelect, o
 
   return (
     <div id={id} ref={ref} role="group" aria-label={`Hours for ${label}`} className={`hours-menu ${align}`}>
-      <div className="hours-list">
-        {HOUR_PRESETS.map((hours) => (
+      {!allowSet && <p className="hint">This day hasn't happened yet, so hours can't be set for it.</p>}
+
+      {allowSet && (
+        <div className="hours-list">
+          {HOUR_PRESETS.map((hours) => (
+            <button
+              key={hours}
+              type="button"
+              className={hours === current ? 'selected' : undefined}
+              aria-pressed={hours === current}
+              disabled={busy}
+              onClick={() => onSelect(hours)}
+            >
+              {hours} h
+            </button>
+          ))}
           <button
-            key={hours}
             type="button"
-            className={hours === current ? 'selected' : undefined}
-            aria-pressed={hours === current}
+            className={hasCustomValue ? 'selected' : undefined}
+            aria-pressed={hasCustomValue}
+            aria-expanded={customOpen}
             disabled={busy}
-            onClick={() => onSelect(hours)}
+            onClick={() => setCustomOpen((open) => !open)}
           >
-            {hours} h
+            Custom…
           </button>
-        ))}
-        <button
-          type="button"
-          className={hasCustomValue ? 'selected' : undefined}
-          aria-pressed={hasCustomValue}
-          aria-expanded={customOpen}
-          disabled={busy}
-          onClick={() => setCustomOpen((open) => !open)}
-        >
-          Custom…
-        </button>
-      </div>
+        </div>
+      )}
 
       {customOpen && (
         <form className="custom-form" onSubmit={submitCustom}>
@@ -91,7 +97,7 @@ export default function HoursMenu({ id, label, current, busy, align, onSelect, o
       )}
 
       {current !== null && (
-        <button type="button" className="danger clear" disabled={busy} onClick={onClear}>
+        <button type="button" className={allowSet ? 'danger clear' : 'danger'} disabled={busy} onClick={onClear}>
           Clear day
         </button>
       )}

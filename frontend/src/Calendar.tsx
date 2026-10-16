@@ -111,8 +111,8 @@ function DayCell({
   const label = formatDayLabel(date);
   const menuId = `hours-menu-${date}`;
   const hours = workDay ? formatHours(workDay.workedHours) : null;
-  // Nothing can be logged for a day that hasn't happened yet. A day that already has hours (entered some
-  // other way) stays clickable, so it can still be corrected or cleared.
+  // Hours can't be set for a day that hasn't happened yet. A future day that somehow already has hours
+  // (entered some other way) stays clickable, but its menu can only clear them.
   const isFuture = date > today;
 
   // Close when the user presses anywhere outside this day (including on another day, which then opens).
@@ -169,6 +169,7 @@ function DayCell({
           id={menuId}
           label={label}
           current={workDay ? workDay.workedHours : null}
+          allowSet={!isFuture}
           busy={busy}
           align={column >= 4 ? 'right' : 'left'}
           onSelect={onSelectHours}

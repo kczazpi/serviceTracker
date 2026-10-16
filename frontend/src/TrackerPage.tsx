@@ -6,7 +6,6 @@ import {
   currentMonth,
   formatHours,
   formatMonth,
-  isCurrentOrFutureMonth,
   monthRange,
   todayIso,
   type YearMonth,
@@ -97,7 +96,6 @@ export default function TrackerPage() {
   const total = days.reduce((sum, d) => sum + d.workedHours, 0);
 
   const today = todayIso();
-  const atCurrentMonth = isCurrentOrFutureMonth(month, today);
 
   return (
     <main className="card wide">
@@ -106,12 +104,12 @@ export default function TrackerPage() {
           ‹
         </button>
         <h2>{formatMonth(month)}</h2>
-        <button type="button" aria-label="Next month" disabled={saving || atCurrentMonth} onClick={() => changeMonth(1)}>
+        <button type="button" aria-label="Next month" disabled={saving} onClick={() => changeMonth(1)}>
           ›
         </button>
       </nav>
 
-      <p className="hint">Click a day to log your hours. Days with hours turn green.</p>
+      <p className="hint">Click a day to log your hours. Days with hours turn green. Days that haven't happened yet can't be logged.</p>
 
       <ErrorList messages={errors} />
 

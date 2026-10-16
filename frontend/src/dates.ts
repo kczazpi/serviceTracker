@@ -54,12 +54,6 @@ export function addMonths({ year, month }: YearMonth, delta: number): YearMonth 
   return { year: Math.floor(index / 12), month: ((index % 12) + 12) % 12 };
 }
 
-/** Whether `month` is the month of `today` or a later one: there is nothing to log in it yet. */
-export function isCurrentOrFutureMonth({ year, month }: YearMonth, today: string = todayIso()): boolean {
-  const [todayYear, todayMonth] = today.split('-').map(Number);
-  return year * 12 + month >= todayYear * 12 + (todayMonth - 1);
-}
-
 export function formatMonth({ year, month }: YearMonth): string {
   return new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(
     new Date(Date.UTC(year, month, 1)),
