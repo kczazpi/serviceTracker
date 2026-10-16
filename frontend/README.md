@@ -5,11 +5,16 @@ browsing month by month.
 
 ## Run it
 
-1. Start the API and database from the repo root: `docker compose up --build` (API on http://localhost:4001).
+**Everything in Docker** (from the repo root): `docker compose up --build`, then open http://localhost:8080.
+The `frontend` container serves the built app with nginx and forwards `/api` to the API container,
+so the browser only ever talks to one origin and no CORS configuration is needed.
+
+**Development with hot reload:**
+
+1. Start the API and database: `docker compose up --build dotnet` (API on http://localhost:4001).
 2. In this folder: `npm install`, then `npm run dev` and open http://localhost:5173.
 
-In development Vite forwards `/api` to the API, so no CORS configuration is needed.
-Point it somewhere else with `API_URL=http://host:port npm run dev`.
+Vite forwards `/api` to the API as well. Point it somewhere else with `API_URL=http://host:port npm run dev`.
 
 ## Scripts
 
@@ -22,5 +27,7 @@ Point it somewhere else with `API_URL=http://host:port npm run dev`.
 ## Notes
 
 - The JWT is kept in `localStorage`. That is simple, but any script on the page can read it, so keep the app free of third-party scripts.
-- For a production deployment, serve `dist/` and `/api` from the same origin (reverse proxy), or set `VITE_API_BASE_URL`
-  at build time and enable CORS on the API.
+- The nginx setup in `nginx.conf` is the "same origin" deployment. The alternative is to host `dist/` elsewhere,
+  set `VITE_API_BASE_URL` at build time and enable CORS on the API.
+- The API container runs with `ASPNETCORE_ENVIRONMENT=Development` in compose; use real settings and a real
+  signing key before exposing this anywhere.
