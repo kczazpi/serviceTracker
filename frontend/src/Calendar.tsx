@@ -59,6 +59,7 @@ export default function Calendar({
           workDay={daysByDate.get(date)}
           column={(offset + index) % 7}
           isToday={date === today}
+          today={today}
           open={openDate === date}
           loading={loading}
           busy={busy}
@@ -78,6 +79,8 @@ interface DayCellProps {
   /** 0 = Monday … 6 = Sunday; the menu of the last columns opens towards the left so it stays on screen. */
   column: number;
   isToday: boolean;
+  /** Today as yyyy-MM-dd: later days can't be logged. */
+  today: string;
   open: boolean;
   loading: boolean;
   busy: boolean;
@@ -92,6 +95,7 @@ function DayCell({
   workDay,
   column,
   isToday,
+  today,
   open,
   loading,
   busy,
@@ -107,6 +111,9 @@ function DayCell({
   const label = formatDayLabel(date);
   const menuId = `hours-menu-${date}`;
   const hours = workDay ? formatHours(workDay.workedHours) : null;
+  // Nothing can be logged for a day that hasn't happened yet. A day that already has hours (entered some
+  // other way) stays clickable, so it can still be corrected or cleared.
+  const isFuture = date > today;
 
   // Close when the user presses anywhere outside this day (including on another day, which then opens).
   useEffect(() => {
@@ -127,7 +134,7 @@ function DayCell({
     wasOpen.current = open;
   }, [open]);
 
-  const className = ['day', workDay && 'logged', isToday && 'today', column >= 5 && 'weekend']
+  const className = ['day', workDay && 'logged', isToday && 'today', isFuture && !workDay && 'future', column >= 5 && 'weekend']
     .filter(Boolean)
     .join(' ');
 
@@ -150,7 +157,7 @@ function DayCell({
         aria-expanded={open}
         aria-controls={open ? menuId : undefined}
         aria-current={isToday ? 'date' : undefined}
-        disabled={loading}
+        disabled={loading || (isFuture && !workDay)}
         onClick={onToggle}
       >
         <span className="num">{dayOfMonth(date)}</span>

@@ -3,9 +3,12 @@ import {
   addMonths,
   dayOfMonth,
   daysInMonth,
+  formatDate,
   formatDayLabel,
   formatHours,
   formatMonth,
+  formatMonthShort,
+  isCurrentOrFutureMonth,
   monthRange,
   toIsoDate,
   weekdayOffset,
@@ -67,5 +70,30 @@ describe('formatting', () => {
     expect(formatHours(8)).toBe('8');
     expect(formatHours(7.5)).toBe('7.5');
     expect(formatHours(0.1 + 0.2)).toBe('0.3');
+  });
+});
+
+describe('isCurrentOrFutureMonth', () => {
+  const today = '2026-10-16';
+
+  it('is true for this month and later, false for earlier ones', () => {
+    expect(isCurrentOrFutureMonth({ year: 2026, month: 9 }, today)).toBe(true);
+    expect(isCurrentOrFutureMonth({ year: 2026, month: 10 }, today)).toBe(true);
+    expect(isCurrentOrFutureMonth({ year: 2027, month: 0 }, today)).toBe(true);
+    expect(isCurrentOrFutureMonth({ year: 2026, month: 8 }, today)).toBe(false);
+    expect(isCurrentOrFutureMonth({ year: 2025, month: 11 }, today)).toBe(false);
+  });
+});
+
+describe('more formatting', () => {
+  it('formats short month names and dates independent of the time zone', () => {
+    expect(formatMonthShort({ year: 2026, month: 0 })).toBe('Jan');
+    expect(formatDate('2026-10-15T12:00:00Z')).toBe('Oct 15, 2026');
+    expect(formatDate('2026-10-15T00:00:00+00:00')).toBe('Oct 15, 2026');
+  });
+
+  it('returns an empty string instead of throwing for something that is not a date', () => {
+    expect(formatDate('')).toBe('');
+    expect(formatDate('not a date')).toBe('');
   });
 });

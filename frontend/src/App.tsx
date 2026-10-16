@@ -1,9 +1,13 @@
 import { useEffect, useState } from 'react';
+import { Navigate, Route, Routes, useNavigate } from 'react-router-dom';
 import { ApiError, me, setUnauthorizedHandler, tokenStore, type User } from './api';
 import AuthPage from './AuthPage';
+import Layout from './Layout';
+import ProfilePage from './ProfilePage';
 import TrackerPage from './TrackerPage';
 
 export default function App() {
+  const navigate = useNavigate();
   const [token, setToken] = useState<string | null>(() => tokenStore.get());
   const [user, setUser] = useState<User | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -46,6 +50,7 @@ export default function App() {
     tokenStore.clear();
     setToken(null);
     setUser(null);
+    navigate('/', { replace: true });
   }
 
   if (!token) return <AuthPage onAuthenticated={handleAuthenticated} />;
@@ -68,5 +73,13 @@ export default function App() {
 
   if (!user) return <p className="muted center">Loading…</p>;
 
-  return <TrackerPage user={user} onLogout={handleLogout} />;
+  return (
+    <Routes>
+      <Route element={<Layout user={user} onLogout={handleLogout} />}>
+        <Route index element={<TrackerPage />} />
+        <Route path="profile" element={<ProfilePage user={user} />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Route>
+    </Routes>
+  );
 }

@@ -1,18 +1,22 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ApiError, createWorkDay, deleteWorkDay, listWorkDays, updateWorkDay, type User, type WorkDay } from './api';
+import { ApiError, createWorkDay, deleteWorkDay, listWorkDays, updateWorkDay, type WorkDay } from './api';
 import Calendar from './Calendar';
-import { addMonths, currentMonth, formatHours, formatMonth, monthRange, todayIso, type YearMonth } from './dates';
+import {
+  addMonths,
+  currentMonth,
+  formatHours,
+  formatMonth,
+  isCurrentOrFutureMonth,
+  monthRange,
+  todayIso,
+  type YearMonth,
+} from './dates';
 import ErrorList from './ErrorList';
-
-interface Props {
-  user: User;
-  onLogout: () => void;
-}
 
 const errorMessages = (err: unknown) => (err instanceof ApiError ? err.messages : ['Something went wrong.']);
 const sortByDate = (a: WorkDay, b: WorkDay) => a.date.localeCompare(b.date);
 
-export default function TrackerPage({ user, onLogout }: Props) {
+export default function TrackerPage() {
   const [month, setMonth] = useState<YearMonth>(currentMonth);
   const [days, setDays] = useState<WorkDay[]>([]);
   const [loading, setLoading] = useState(true);
@@ -92,51 +96,42 @@ export default function TrackerPage({ user, onLogout }: Props) {
 
   const total = days.reduce((sum, d) => sum + d.workedHours, 0);
 
+  const today = todayIso();
+  const atCurrentMonth = isCurrentOrFutureMonth(month, today);
+
   return (
-    <div className="page">
-      <header className="topbar">
-        <strong>Service Tracker</strong>
-        <span>
-          {user.name} {user.surname}
-        </span>
-        <button type="button" onClick={onLogout}>
-          Sign out
+    <main className="card wide">
+      <nav className="month-nav">
+        <button type="button" aria-label="Previous month" disabled={saving} onClick={() => changeMonth(-1)}>
+          ‹
         </button>
-      </header>
+        <h2>{formatMonth(month)}</h2>
+        <button type="button" aria-label="Next month" disabled={saving || atCurrentMonth} onClick={() => changeMonth(1)}>
+          ›
+        </button>
+      </nav>
 
-      <main className="card wide">
-        <nav className="month-nav">
-          <button type="button" aria-label="Previous month" disabled={saving} onClick={() => changeMonth(-1)}>
-            ‹
-          </button>
-          <h2>{formatMonth(month)}</h2>
-          <button type="button" aria-label="Next month" disabled={saving} onClick={() => changeMonth(1)}>
-            ›
-          </button>
-        </nav>
+      <p className="hint">Click a day to log your hours. Days with hours turn green.</p>
 
-        <p className="hint">Click a day to log your hours. Days with hours turn green.</p>
+      <ErrorList messages={errors} />
 
-        <ErrorList messages={errors} />
+      <Calendar
+        month={month}
+        daysByDate={daysByDate}
+        today={today}
+        openDate={openDate}
+        loading={loading}
+        busy={saving}
+        onOpen={setOpenDate}
+        onSelectHours={handleSelectHours}
+        onClear={handleClear}
+      />
 
-        <Calendar
-          month={month}
-          daysByDate={daysByDate}
-          today={todayIso()}
-          openDate={openDate}
-          loading={loading}
-          busy={saving}
-          onOpen={setOpenDate}
-          onSelectHours={handleSelectHours}
-          onClear={handleClear}
-        />
-
-        <p className="summary">
-          {loading
-            ? 'Loading…'
-            : `${days.length} ${days.length === 1 ? 'day' : 'days'} logged · ${formatHours(total)} h`}
-        </p>
-      </main>
-    </div>
+      <p className="summary">
+        {loading
+          ? 'Loading…'
+          : `${days.length} ${days.length === 1 ? 'day' : 'days'} logged · ${formatHours(total)} h`}
+      </p>
+    </main>
   );
 }

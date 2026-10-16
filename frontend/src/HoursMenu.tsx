@@ -1,8 +1,5 @@
-import { useEffect, useRef } from 'react';
-import { formatHours } from './dates';
-
-/** 0.5, 1, 1.5 … 12 hours */
-export const HOUR_OPTIONS = Array.from({ length: 24 }, (_, i) => (i + 1) / 2);
+import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { HOUR_PRESETS, MAX_HOURS, MIN_HOURS, parseCustomHours } from './hours';
 
 interface Props {
   id: string;
@@ -18,25 +15,37 @@ interface Props {
 
 export default function HoursMenu({ id, label, current, busy, align, onSelect, onClear }: Props) {
   const ref = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const firstRun = useRef(true);
 
-  // A day logged with an unusual value (say 7.25 h, entered via the API) must still show up as selected.
-  const options =
-    current !== null && !HOUR_OPTIONS.includes(current)
-      ? [...HOUR_OPTIONS, current].sort((a, b) => a - b)
-      : HOUR_OPTIONS;
+  // A logged value that isn't one of the presets (6.5 h, 24 h …) shows up under "Custom", already filled in.
+  const hasCustomValue = current !== null && !(HOUR_PRESETS as readonly number[]).includes(current);
+  const [customOpen, setCustomOpen] = useState(hasCustomValue);
+  const [text, setText] = useState(hasCustomValue ? String(current) : '');
+  const customHours = parseCustomHours(text);
 
-  // Keyboard users land on the current value, or on the first option for an empty day.
+  // Keyboard users land on the current value (or the first option); opening "Custom" focuses its field.
   useEffect(() => {
-    const target =
-      ref.current?.querySelector<HTMLButtonElement>('button[aria-pressed="true"]') ??
-      ref.current?.querySelector<HTMLButtonElement>('button');
-    target?.focus();
-  }, []);
+    if (customOpen) {
+      inputRef.current?.focus();
+    } else if (firstRun.current) {
+      const target =
+        ref.current?.querySelector<HTMLButtonElement>('button[aria-pressed="true"]') ??
+        ref.current?.querySelector<HTMLButtonElement>('button');
+      target?.focus();
+    }
+    firstRun.current = false;
+  }, [customOpen]);
+
+  function submitCustom(event: FormEvent) {
+    event.preventDefault();
+    if (customHours !== null) onSelect(customHours);
+  }
 
   return (
     <div id={id} ref={ref} role="group" aria-label={`Hours for ${label}`} className={`hours-menu ${align}`}>
-      <div className="hours-grid">
-        {options.map((hours) => (
+      <div className="hours-list">
+        {HOUR_PRESETS.map((hours) => (
           <button
             key={hours}
             type="button"
@@ -45,10 +54,42 @@ export default function HoursMenu({ id, label, current, busy, align, onSelect, o
             disabled={busy}
             onClick={() => onSelect(hours)}
           >
-            {formatHours(hours)} h
+            {hours} h
           </button>
         ))}
+        <button
+          type="button"
+          className={hasCustomValue ? 'selected' : undefined}
+          aria-pressed={hasCustomValue}
+          aria-expanded={customOpen}
+          disabled={busy}
+          onClick={() => setCustomOpen((open) => !open)}
+        >
+          Custom…
+        </button>
       </div>
+
+      {customOpen && (
+        <form className="custom-form" onSubmit={submitCustom}>
+          <label>
+            Hours (up to {MAX_HOURS})
+            <input
+              ref={inputRef}
+              type="number"
+              inputMode="decimal"
+              min={MIN_HOURS}
+              max={MAX_HOURS}
+              step="any"
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+            />
+          </label>
+          <button type="submit" className="primary" disabled={busy || customHours === null}>
+            Set
+          </button>
+        </form>
+      )}
+
       {current !== null && (
         <button type="button" className="danger clear" disabled={busy} onClick={onClear}>
           Clear day

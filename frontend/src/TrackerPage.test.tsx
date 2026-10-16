@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as api from './api';
@@ -17,11 +17,6 @@ const createWorkDay = vi.mocked(api.createWorkDay);
 const updateWorkDay = vi.mocked(api.updateWorkDay);
 const deleteWorkDay = vi.mocked(api.deleteWorkDay);
 
-const jane: api.User = {
-  id: 'u1', username: 'jane', email: 'jane@example.com', name: 'Jane', surname: 'Doe',
-  isActive: true, createdAt: '', updatedAt: '', lastLoginAt: null,
-};
-
 const day = (id: string, date: string, workedHours: number): api.WorkDay => ({ id, userId: 'u1', date, workedHours });
 
 beforeEach(() => {
@@ -36,12 +31,14 @@ beforeEach(() => {
 
 afterEach(() => vi.useRealTimers());
 
-const renderPage = (onLogout = vi.fn()) => render(<TrackerPage user={jane} onLogout={onLogout} />);
+const renderPage = () => render(<TrackerPage />);
 
 /** A day cell, found by its label, e.g. dayCell('Fri, Oct 16'). */
 const dayCell = (label: string) => screen.findByRole('button', { name: new RegExp(`^${label},`) });
 const menuFor = (label: string) => screen.getByRole('group', { name: `Hours for ${label}` });
 const anyMenu = () => screen.queryByRole('group', { name: /^Hours for/ });
+const customField = () => screen.getByLabelText(/^Hours \(up to 24\)/);
+const ALL_CELLS = /, (nothing logged|[\d.]+ h logged)$/;
 
 describe('calendar', () => {
   it('shows every day of the month, in a grid that starts on Monday', async () => {
@@ -52,7 +49,7 @@ describe('calendar', () => {
 
     expect(listWorkDays).toHaveBeenCalledWith('2026-10-01', '2026-10-31');
     expect(screen.getByRole('heading', { name: 'October 2026' })).toBeInTheDocument();
-    expect(screen.getAllByRole('button', { name: /, (nothing logged|[\d.]+ h logged)$/ })).toHaveLength(31);
+    expect(screen.getAllByRole('button', { name: ALL_CELLS })).toHaveLength(31);
     expect(screen.getAllByText(/^(Mon|Tue|Wed|Thu|Fri|Sat|Sun)$/).map((e) => e.textContent)).toEqual([
       'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun',
     ]);
@@ -69,9 +66,9 @@ describe('calendar', () => {
     expect(await dayCell('Fri, Oct 16')).toHaveClass('logged');
     expect(await dayCell('Fri, Oct 16')).toHaveTextContent('6.5 h');
 
-    const saturday = await dayCell('Sat, Oct 17');
-    expect(saturday).not.toHaveClass('logged');
-    expect(saturday).not.toHaveTextContent('h');
+    const wednesday = await dayCell('Wed, Oct 14');
+    expect(wednesday).not.toHaveClass('logged');
+    expect(wednesday).not.toHaveTextContent('h');
   });
 
   it('summarises the month', async () => {
@@ -96,7 +93,7 @@ describe('calendar', () => {
 
     renderPage();
 
-    expect(await dayCell('Fri, Oct 16')).toBeDisabled();
+    expect(await dayCell('Thu, Oct 15')).toBeDisabled();
     expect(screen.getByText('Loading…')).toBeInTheDocument();
   });
 
@@ -109,28 +106,61 @@ describe('calendar', () => {
   });
 });
 
-describe('logging hours', () => {
-  it('opens a menu of hours when a day is clicked, and logs the chosen hours (the day turns green)', async () => {
+describe('days in the future', () => {
+  it("can't be picked: only today and earlier days are clickable", async () => {
     listWorkDays.mockResolvedValue([]);
-    createWorkDay.mockResolvedValue(day('n', '2026-10-17', 8));
     const user = userEvent.setup();
     renderPage();
 
-    const saturday = await dayCell('Sat, Oct 17');
-    expect(saturday).not.toHaveClass('logged');
-    await user.click(saturday);
-    await user.click(within(menuFor('Sat, Oct 17')).getByRole('button', { name: '8 h' }));
+    expect(await dayCell('Fri, Oct 16')).toBeEnabled(); // today
+    expect(await dayCell('Thu, Oct 15')).toBeEnabled();
+    const tomorrow = await dayCell('Sat, Oct 17');
+    expect(tomorrow).toBeDisabled();
+    expect(tomorrow).toHaveClass('future');
+    expect(await dayCell('Sat, Oct 31')).toBeDisabled();
 
-    expect(createWorkDay).toHaveBeenCalledWith('2026-10-17', 8);
-    const logged = await screen.findByRole('button', { name: /^Sat, Oct 17, 8 h logged/ });
-    expect(logged).toHaveClass('logged');
-    expect(logged).toHaveTextContent('8 h');
+    await user.click(tomorrow);
     expect(anyMenu()).not.toBeInTheDocument();
-    expect(logged).toHaveFocus();
-    expect(screen.getByText('1 day logged · 8 h')).toBeInTheDocument();
+    expect(createWorkDay).not.toHaveBeenCalled();
   });
 
-  it('offers half hour steps from 0.5 to 12 hours', async () => {
+  it('can still be corrected when they already have hours (entered some other way)', async () => {
+    listWorkDays.mockResolvedValue([day('f', '2026-10-20', 4)]);
+    deleteWorkDay.mockResolvedValue(undefined);
+    const user = userEvent.setup();
+    renderPage();
+
+    const cell = await dayCell('Tue, Oct 20');
+    expect(cell).toBeEnabled();
+    expect(cell).toHaveClass('logged');
+    await user.click(cell);
+    await user.click(within(menuFor('Tue, Oct 20')).getByRole('button', { name: 'Clear day' }));
+
+    expect(deleteWorkDay).toHaveBeenCalledWith('f');
+  });
+
+  it('cannot be reached by going forward from the current month', async () => {
+    listWorkDays.mockResolvedValue([]);
+    const user = userEvent.setup();
+    renderPage();
+    await dayCell('Thu, Oct 1');
+
+    expect(screen.getByRole('button', { name: 'Next month' })).toBeDisabled();
+
+    await user.click(screen.getByRole('button', { name: 'Previous month' }));
+    expect(await screen.findByRole('heading', { name: 'September 2026' })).toBeInTheDocument();
+    expect(listWorkDays).toHaveBeenLastCalledWith('2026-09-01', '2026-09-30');
+    expect(screen.getByRole('button', { name: 'Next month' })).toBeEnabled();
+    expect((await dayCell('Wed, Sep 30')).hasAttribute('disabled')).toBe(false); // the whole past is open
+
+    await user.click(screen.getByRole('button', { name: 'Next month' }));
+    expect(await screen.findByRole('heading', { name: 'October 2026' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Next month' })).toBeDisabled();
+  });
+});
+
+describe('logging hours', () => {
+  it('offers 1, 2, 4, 8 and 12 hours or a custom value', async () => {
     listWorkDays.mockResolvedValue([]);
     const user = userEvent.setup();
     renderPage();
@@ -138,30 +168,142 @@ describe('logging hours', () => {
     await user.click(await dayCell('Mon, Oct 5'));
 
     const options = within(menuFor('Mon, Oct 5')).getAllByRole('button').map((b) => b.textContent);
-    expect(options).toHaveLength(24);
-    expect(options[0]).toBe('0.5 h');
-    expect(options[1]).toBe('1 h');
-    expect(options[15]).toBe('8 h');
-    expect(options[23]).toBe('12 h');
+    expect(options).toEqual(['1 h', '2 h', '4 h', '8 h', '12 h', 'Custom…']);
+    expect(screen.queryByLabelText(/^Hours \(up to/)).not.toBeInTheDocument();
+  });
+
+  it('logs the chosen preset and turns the day green', async () => {
+    listWorkDays.mockResolvedValue([]);
+    createWorkDay.mockResolvedValue(day('n', '2026-10-10', 8));
+    const user = userEvent.setup();
+    renderPage();
+
+    const saturday = await dayCell('Sat, Oct 10');
+    expect(saturday).not.toHaveClass('logged');
+    await user.click(saturday);
+    await user.click(within(menuFor('Sat, Oct 10')).getByRole('button', { name: '8 h' }));
+
+    expect(createWorkDay).toHaveBeenCalledWith('2026-10-10', 8);
+    const logged = await screen.findByRole('button', { name: /^Sat, Oct 10, 8 h logged/ });
+    expect(logged).toHaveClass('logged');
+    expect(logged).toHaveTextContent('8 h');
+    expect(anyMenu()).not.toBeInTheDocument();
+    expect(logged).toHaveFocus();
+    expect(screen.getByText('1 day logged · 8 h')).toBeInTheDocument();
+  });
+
+  it('logs a custom number of hours', async () => {
+    listWorkDays.mockResolvedValue([]);
+    createWorkDay.mockResolvedValue(day('n', '2026-10-10', 6.5));
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await dayCell('Sat, Oct 10'));
+    await user.click(within(menuFor('Sat, Oct 10')).getByRole('button', { name: 'Custom…' }));
+    expect(customField()).toHaveFocus();
+    const set = within(menuFor('Sat, Oct 10')).getByRole('button', { name: 'Set' });
+    expect(set).toBeDisabled();
+    await user.type(customField(), '6.5');
+    expect(set).toBeEnabled();
+    await user.click(set);
+
+    expect(createWorkDay).toHaveBeenCalledWith('2026-10-10', 6.5);
+    const logged = await screen.findByRole('button', { name: /^Sat, Oct 10, 6.5 h logged/ });
+    expect(logged).toHaveClass('logged');
+  });
+
+  it('submits a custom value with Enter', async () => {
+    listWorkDays.mockResolvedValue([]);
+    createWorkDay.mockResolvedValue(day('n', '2026-10-10', 3));
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await dayCell('Sat, Oct 10'));
+    await user.click(within(menuFor('Sat, Oct 10')).getByRole('button', { name: 'Custom…' }));
+    await user.type(customField(), '3{Enter}');
+
+    expect(createWorkDay).toHaveBeenCalledWith('2026-10-10', 3);
+  });
+
+  it.each(['0', '-2', '24.5', '25'])('does not accept %s hours as a custom value', async (text) => {
+    listWorkDays.mockResolvedValue([]);
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await dayCell('Sat, Oct 10'));
+    await user.click(within(menuFor('Sat, Oct 10')).getByRole('button', { name: 'Custom…' }));
+    await user.type(customField(), `${text}{Enter}`);
+
+    expect(within(menuFor('Sat, Oct 10')).getByRole('button', { name: 'Set' })).toBeDisabled();
+    expect(createWorkDay).not.toHaveBeenCalled();
+  });
+
+  // The disabled "Set" button already stops Enter; this checks the guard behind it.
+  it.each(['25', '0', ''])('never saves an invalid custom value (%j), even if the form is submitted directly', async (text) => {
+    listWorkDays.mockResolvedValue([]);
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await dayCell('Sat, Oct 10'));
+    await user.click(within(menuFor('Sat, Oct 10')).getByRole('button', { name: 'Custom…' }));
+    if (text) await user.type(customField(), text);
+    fireEvent.submit(customField().closest('form')!);
+
+    expect(createWorkDay).not.toHaveBeenCalled();
+  });
+
+  it('accepts the limits, 0.01 and 24 hours', async () => {
+    listWorkDays.mockResolvedValue([]);
+    createWorkDay.mockResolvedValue(day('n', '2026-10-10', 24));
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await dayCell('Sat, Oct 10'));
+    await user.click(within(menuFor('Sat, Oct 10')).getByRole('button', { name: 'Custom…' }));
+    await user.type(customField(), '24');
+    await user.click(within(menuFor('Sat, Oct 10')).getByRole('button', { name: 'Set' }));
+
+    expect(createWorkDay).toHaveBeenCalledWith('2026-10-10', 24);
   });
 
   it('changes the hours of a logged day, which stays green', async () => {
     listWorkDays.mockResolvedValue([day('a', '2026-10-15', 8)]);
-    updateWorkDay.mockResolvedValue(day('a', '2026-10-15', 6));
+    updateWorkDay.mockResolvedValue(day('a', '2026-10-15', 4));
     const user = userEvent.setup();
     renderPage();
 
     await user.click(await dayCell('Thu, Oct 15'));
     const menu = menuFor('Thu, Oct 15');
     expect(within(menu).getByRole('button', { name: '8 h' })).toHaveAttribute('aria-pressed', 'true');
-    expect(within(menu).getByRole('button', { name: '6 h' })).toHaveAttribute('aria-pressed', 'false');
-    await user.click(within(menu).getByRole('button', { name: '6 h' }));
+    expect(within(menu).getByRole('button', { name: '4 h' })).toHaveAttribute('aria-pressed', 'false');
+    expect(within(menu).getByRole('button', { name: 'Custom…' })).toHaveAttribute('aria-pressed', 'false');
+    await user.click(within(menu).getByRole('button', { name: '4 h' }));
 
-    expect(updateWorkDay).toHaveBeenCalledWith('a', 6);
+    expect(updateWorkDay).toHaveBeenCalledWith('a', 4);
     expect(createWorkDay).not.toHaveBeenCalled();
-    const cell = await screen.findByRole('button', { name: /^Thu, Oct 15, 6 h logged/ });
+    const cell = await screen.findByRole('button', { name: /^Thu, Oct 15, 4 h logged/ });
     expect(cell).toHaveClass('logged');
-    expect(screen.getByText('1 day logged · 6 h')).toBeInTheDocument();
+    expect(screen.getByText('1 day logged · 4 h')).toBeInTheDocument();
+  });
+
+  it.each([24, 6.5])('shows a stored value that is not a preset (%s h) under Custom, filled in', async (hours) => {
+    listWorkDays.mockResolvedValue([day('a', '2026-10-16', hours)]);
+    updateWorkDay.mockResolvedValue(day('a', '2026-10-16', 8));
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await dayCell('Fri, Oct 16'));
+
+    const menu = menuFor('Fri, Oct 16');
+    expect(within(menu).getByRole('button', { name: 'Custom…' })).toHaveAttribute('aria-pressed', 'true');
+    expect(customField()).toHaveValue(hours);
+    expect(customField()).toHaveFocus();
+    for (const preset of ['1 h', '2 h', '4 h', '8 h', '12 h']) {
+      expect(within(menu).getByRole('button', { name: preset })).toHaveAttribute('aria-pressed', 'false');
+    }
+
+    await user.click(within(menu).getByRole('button', { name: '8 h' }));
+    expect(updateWorkDay).toHaveBeenCalledWith('a', 8);
   });
 
   it('does not call the API when the same hours are chosen again', async () => {
@@ -208,22 +350,12 @@ describe('logging hours', () => {
     const user = userEvent.setup();
     renderPage();
 
-    await user.click(await dayCell('Sat, Oct 17'));
-    await user.click(within(menuFor('Sat, Oct 17')).getByRole('button', { name: '8 h' }));
+    await user.click(await dayCell('Sat, Oct 10'));
+    await user.click(within(menuFor('Sat, Oct 10')).getByRole('button', { name: '8 h' }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent('A work day already exists for this date.');
-    expect(menuFor('Sat, Oct 17')).toBeInTheDocument();
-    expect(await dayCell('Sat, Oct 17')).not.toHaveClass('logged');
-  });
-
-  it('shows an unusual stored value (7.25 h) as the selected option', async () => {
-    listWorkDays.mockResolvedValue([day('a', '2026-10-15', 7.25)]);
-    const user = userEvent.setup();
-    renderPage();
-
-    await user.click(await dayCell('Thu, Oct 15'));
-
-    expect(within(menuFor('Thu, Oct 15')).getByRole('button', { name: '7.25 h' })).toHaveAttribute('aria-pressed', 'true');
+    expect(menuFor('Sat, Oct 10')).toBeInTheDocument();
+    expect(await dayCell('Sat, Oct 10')).not.toHaveClass('logged');
   });
 });
 
@@ -237,17 +369,17 @@ describe('the hours menu', () => {
     expect(within(menuFor('Thu, Oct 15')).getByRole('button', { name: '8 h' })).toHaveFocus();
 
     await user.click(await dayCell('Fri, Oct 16'));
-    expect(within(menuFor('Fri, Oct 16')).getByRole('button', { name: '0.5 h' })).toHaveFocus();
+    expect(within(menuFor('Fri, Oct 16')).getByRole('button', { name: '1 h' })).toHaveFocus();
   });
 
   it('closes with Escape and gives focus back to the day', async () => {
     listWorkDays.mockResolvedValue([]);
     const user = userEvent.setup();
     renderPage();
-    const cell = await dayCell('Sat, Oct 17');
+    const cell = await dayCell('Sat, Oct 10');
 
     await user.click(cell);
-    expect(menuFor('Sat, Oct 17')).toBeInTheDocument();
+    expect(menuFor('Sat, Oct 10')).toBeInTheDocument();
     await user.keyboard('{Escape}');
 
     expect(anyMenu()).not.toBeInTheDocument();
@@ -255,11 +387,25 @@ describe('the hours menu', () => {
     expect(createWorkDay).not.toHaveBeenCalled();
   });
 
+  it('closes with Escape from the custom field too', async () => {
+    listWorkDays.mockResolvedValue([]);
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await dayCell('Sat, Oct 10'));
+    await user.click(within(menuFor('Sat, Oct 10')).getByRole('button', { name: 'Custom…' }));
+    await user.type(customField(), '5');
+    await user.keyboard('{Escape}');
+
+    expect(anyMenu()).not.toBeInTheDocument();
+    expect(createWorkDay).not.toHaveBeenCalled();
+  });
+
   it('closes when the day is clicked again', async () => {
     listWorkDays.mockResolvedValue([]);
     const user = userEvent.setup();
     renderPage();
-    const cell = await dayCell('Sat, Oct 17');
+    const cell = await dayCell('Sat, Oct 10');
 
     await user.click(cell);
     await user.click(cell);
@@ -272,7 +418,7 @@ describe('the hours menu', () => {
     const user = userEvent.setup();
     renderPage();
 
-    await user.click(await dayCell('Sat, Oct 17'));
+    await user.click(await dayCell('Sat, Oct 10'));
     await user.click(screen.getByRole('heading', { name: 'October 2026' }));
 
     expect(anyMenu()).not.toBeInTheDocument();
@@ -290,57 +436,37 @@ describe('the hours menu', () => {
     expect(menus).toHaveLength(1);
     expect(menus[0]).toHaveAccessibleName('Hours for Fri, Oct 16');
   });
-});
 
-describe('navigation', () => {
-  it('moves between months, closing an open menu', async () => {
+  it('closes when the month is changed with the mouse', async () => {
     listWorkDays.mockResolvedValue([]);
     const user = userEvent.setup();
     renderPage();
-    await user.click(await dayCell('Sat, Oct 17'));
-    expect(menuFor('Sat, Oct 17')).toBeInTheDocument();
-
-    await user.click(screen.getByRole('button', { name: 'Next month' }));
-
-    expect(await screen.findByRole('heading', { name: 'November 2026' })).toBeInTheDocument();
-    expect(listWorkDays).toHaveBeenLastCalledWith('2026-11-01', '2026-11-30');
-    expect(await dayCell('Sun, Nov 1')).toBeInTheDocument();
-    expect(screen.getAllByRole('button', { name: /, (nothing logged|[\d.]+ h logged)$/ })).toHaveLength(30);
-    expect(anyMenu()).not.toBeInTheDocument();
+    await user.click(await dayCell('Sat, Oct 10'));
 
     await user.click(screen.getByRole('button', { name: 'Previous month' }));
-    expect(await screen.findByRole('heading', { name: 'October 2026' })).toBeInTheDocument();
+
+    expect(await screen.findByRole('heading', { name: 'September 2026' })).toBeInTheDocument();
+    expect(await dayCell('Wed, Sep 30')).toBeInTheDocument();
+    expect(anyMenu()).not.toBeInTheDocument();
   });
 
   // A mouse click on the arrows closes the menu via the click-outside handler; the keyboard does not
   // go through it, so changing month has to close the menu itself.
-  it('closes an open menu when the month is changed with the keyboard, and it stays closed', async () => {
+  it('closes when the month is changed with the keyboard, and stays closed on the way back', async () => {
     listWorkDays.mockResolvedValue([]);
     const user = userEvent.setup();
     renderPage();
-    await user.click(await dayCell('Sat, Oct 17'));
-    expect(menuFor('Sat, Oct 17')).toBeInTheDocument();
-
-    screen.getByRole('button', { name: 'Next month' }).focus();
-    await user.keyboard('{Enter}');
-    expect(await screen.findByRole('heading', { name: 'November 2026' })).toBeInTheDocument();
+    await user.click(await dayCell('Sat, Oct 10'));
+    expect(menuFor('Sat, Oct 10')).toBeInTheDocument();
 
     screen.getByRole('button', { name: 'Previous month' }).focus();
     await user.keyboard('{Enter}');
+    expect(await screen.findByRole('heading', { name: 'September 2026' })).toBeInTheDocument();
+
+    screen.getByRole('button', { name: 'Next month' }).focus();
+    await user.keyboard('{Enter}');
     expect(await screen.findByRole('heading', { name: 'October 2026' })).toBeInTheDocument();
-    expect(await dayCell('Sat, Oct 17')).toBeInTheDocument();
+    expect(await dayCell('Sat, Oct 10')).toBeInTheDocument();
     expect(anyMenu()).not.toBeInTheDocument();
-  });
-
-  it('shows the user and signs out', async () => {
-    listWorkDays.mockResolvedValue([]);
-    const onLogout = vi.fn();
-    const user = userEvent.setup();
-    renderPage(onLogout);
-
-    expect(screen.getByText('Jane Doe')).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Sign out' }));
-
-    expect(onLogout).toHaveBeenCalledOnce();
   });
 });

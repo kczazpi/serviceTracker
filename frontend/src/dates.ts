@@ -54,10 +54,31 @@ export function addMonths({ year, month }: YearMonth, delta: number): YearMonth 
   return { year: Math.floor(index / 12), month: ((index % 12) + 12) % 12 };
 }
 
+/** Whether `month` is the month of `today` or a later one: there is nothing to log in it yet. */
+export function isCurrentOrFutureMonth({ year, month }: YearMonth, today: string = todayIso()): boolean {
+  const [todayYear, todayMonth] = today.split('-').map(Number);
+  return year * 12 + month >= todayYear * 12 + (todayMonth - 1);
+}
+
 export function formatMonth({ year, month }: YearMonth): string {
   return new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(
     new Date(Date.UTC(year, month, 1)),
   );
+}
+
+/** "Oct" */
+export function formatMonthShort({ year, month }: YearMonth): string {
+  return new Intl.DateTimeFormat('en-US', { month: 'short', timeZone: 'UTC' }).format(new Date(Date.UTC(year, month, 1)));
+}
+
+/**
+ * "Oct 15, 2026" for an ISO date or date-time (shown in UTC so it doesn't depend on the viewer's time zone).
+ * Returns "" for something that isn't a date, so a bad value can never break the page.
+ */
+export function formatDate(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return '';
+  return new Intl.DateTimeFormat('en-US', { dateStyle: 'medium', timeZone: 'UTC' }).format(date);
 }
 
 /** "Fri, Oct 16" */
