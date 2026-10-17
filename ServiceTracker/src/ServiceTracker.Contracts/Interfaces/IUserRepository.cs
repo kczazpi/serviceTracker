@@ -1,4 +1,6 @@
-namespace ServiceTracker.Contracts;
+using ServiceTracker.Contracts.Dtos;
+
+namespace ServiceTracker.Contracts.Interfaces;
 
 public interface IUserRepository
 {

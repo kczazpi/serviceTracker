@@ -10,7 +10,7 @@ using ServiceTracker.Api.Application.Services;
 using ServiceTracker.Api.Core.Domain;
 using ServiceTracker.Api.Core.Repositories;
 using ServiceTracker.Api.Infrastructure.Persistence;
-using ServiceTracker.Contracts;
+using ServiceTracker.Contracts.Interfaces;
 
 var builder = WebApplication.CreateBuilder(args);
 

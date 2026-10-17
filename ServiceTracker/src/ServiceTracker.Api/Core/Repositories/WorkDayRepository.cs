@@ -3,7 +3,8 @@ using Npgsql;
 using ServiceTracker.Api.Core.Domain;
 using ServiceTracker.Api.Core.Mapping;
 using ServiceTracker.Api.Infrastructure.Persistence;
-using ServiceTracker.Contracts;
+using ServiceTracker.Contracts.Dtos;
+using ServiceTracker.Contracts.Interfaces;
 
 namespace ServiceTracker.Api.Core.Repositories;
 

@@ -3,7 +3,8 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.IdentityModel.JsonWebTokens;
 using ServiceTracker.Api.Core.Domain;
-using ServiceTracker.Contracts;
+using ServiceTracker.Contracts.Dtos;
+using ServiceTracker.Contracts.Interfaces;
 
 namespace ServiceTracker.Api.Endpoints;
 

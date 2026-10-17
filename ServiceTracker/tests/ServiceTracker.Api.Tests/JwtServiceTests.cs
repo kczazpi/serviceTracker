@@ -4,7 +4,7 @@ using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.JsonWebTokens;
 using Microsoft.IdentityModel.Tokens;
 using ServiceTracker.Api.Application.Services;
-using ServiceTracker.Contracts;
+using ServiceTracker.Contracts.Dtos;
 
 namespace ServiceTracker.Api.Tests;
 

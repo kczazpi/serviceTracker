@@ -1,4 +1,5 @@
-using ServiceTracker.Contracts;
+using ServiceTracker.Contracts.Dtos;
+using ServiceTracker.Contracts.Interfaces;
 
 namespace ServiceTracker.Api.Application.Services;
 

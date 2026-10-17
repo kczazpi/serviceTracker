@@ -5,7 +5,7 @@ using ServiceTracker.Api.Application.Services;
 using ServiceTracker.Api.Core.Domain;
 using ServiceTracker.Api.Endpoints;
 using ServiceTracker.Api.Tests.Fakes;
-using ServiceTracker.Contracts;
+using ServiceTracker.Contracts.Dtos;
 
 namespace ServiceTracker.Api.Tests;
 

@@ -2,7 +2,8 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using ServiceTracker.Api.Core.Domain;
 using ServiceTracker.Api.Core.Mapping;
-using ServiceTracker.Contracts;
+using ServiceTracker.Contracts.Dtos;
+using ServiceTracker.Contracts.Interfaces;
 
 namespace ServiceTracker.Api.Core.Repositories;
 

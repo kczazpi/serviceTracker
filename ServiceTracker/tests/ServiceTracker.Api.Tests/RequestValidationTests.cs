@@ -1,6 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using ServiceTracker.Api.Application.Services;
-using ServiceTracker.Contracts;
+using ServiceTracker.Contracts.Dtos;
 
 namespace ServiceTracker.Api.Tests;
 

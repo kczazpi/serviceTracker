@@ -1,4 +1,4 @@
-namespace ServiceTracker.Contracts;
+namespace ServiceTracker.Contracts.Dtos;
 
 public record UserDto(
     Guid Id,

@@ -1,6 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 
-namespace ServiceTracker.Contracts;
+namespace ServiceTracker.Contracts.Dtos;
 
 public class UpdateWorkDayRequest
 {
