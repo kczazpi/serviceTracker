@@ -6,4 +6,5 @@ public class WorkDay
     public Guid UserId { get; set; }
     public DateOnly Date { get; set; }
     public decimal WorkedHours { get; set; }
+    public decimal OvertimeHours { get; set; }
 }

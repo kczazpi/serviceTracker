@@ -1,4 +1,4 @@
-namespace ServiceTracker.Contracts;
+namespace ServiceTracker.Contracts.Dtos;
 
 public class WorkDayDto
 {
@@ -6,4 +6,5 @@ public class WorkDayDto
     public Guid UserId { get; set; }
     public DateOnly Date { get; set; }
     public decimal WorkedHours { get; set; }
+    public decimal OvertimeHours { get; set; }
 }

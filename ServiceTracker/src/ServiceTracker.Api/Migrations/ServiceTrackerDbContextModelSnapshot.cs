@@ -302,6 +302,10 @@ namespace ServiceTracker.Api.Migrations
                         .HasColumnType("date")
                         .HasColumnName("date");
 
+                    b.Property<decimal>("OvertimeHours")
+                        .HasColumnType("numeric")
+                        .HasColumnName("overtime_hours");
+
                     b.Property<Guid>("UserId")
                         .HasColumnType("uuid")
                         .HasColumnName("user_id");

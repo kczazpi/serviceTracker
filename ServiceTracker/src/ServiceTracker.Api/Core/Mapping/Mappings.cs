@@ -1,5 +1,5 @@
 using ServiceTracker.Api.Core.Domain;
-using ServiceTracker.Contracts;
+using ServiceTracker.Contracts.Dtos;
 
 namespace ServiceTracker.Api.Core.Mapping;
 
@@ -21,6 +21,7 @@ public static class Mappings
         Id = workDay.Id,
         UserId = workDay.UserId,
         Date = workDay.Date,
+        OvertimeHours = workDay.OvertimeHours,
         WorkedHours = workDay.WorkedHours
     };
 }
